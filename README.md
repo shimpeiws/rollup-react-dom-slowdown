@@ -44,6 +44,7 @@ The plugins are only needed to produce the input. Building `main.js` through the
 |---|---|
 | 4.63.6 | 0.6 s |
 | 4.64.2 | > 60 s (stopped) |
+| 4.64.2, `treeshake: { tryCatchDeoptimization: false }` | > 60 s (stopped) |
 | 4.64.2, `treeshake: false` | 1.2 s |
 
 The second and third rows only differ in `treeshake`, so the extra time is spent in tree-shaking. The slow runs were stopped at 60 seconds rather than left to finish: they are CPU-bound and their memory keeps growing. In a larger app, a full slow run took about 4 minutes and used about 1.4 GB RSS.
@@ -95,7 +96,9 @@ A `node --cpu-prof` run of the full-app build spent about 92% of its 224 s of se
 
 ## Suspected change
 
-4.64.0 contains one feature: [rollup/rollup#6541](https://github.com/rollup/rollup/pull/6541), "Retain callbacks of helper methods called from try statements". `bundle-input.js` contains 82 `try {` blocks, and the hot functions above handle call arguments. This is a guess. I have not bisected individual commits.
+4.64.0 contains one feature: [rollup/rollup#6541](https://github.com/rollup/rollup/pull/6541), "Retain callbacks of helper methods called from try statements".
+
+Disabling `treeshake.tryCatchDeoptimization` does not remove the slowdown (see Results), so the try statements are probably not the trigger. #6541 also adds callee resolution: it follows object members, call return values and possible values of reassigned variables. That resolution may also run for ordinary calls. This would fit the profile, where `includeCallArgumentsOfPossibleValues` is near the top. I have not bisected commits, so this is still an inference.
 
 ## License
 
