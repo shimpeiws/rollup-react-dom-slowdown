@@ -34,7 +34,29 @@ createRoot(document.getElementById("root")).render(createElement("p", null, "hi"
 | 4.64.0 | > 30 s (stopped) |
 | 4.64.2 | > 60 s (stopped) |
 
-Environment: Node v24.16.0, macOS (Apple Silicon), react / react-dom 19.1.9. `package-lock.json` pins the exact dependency tree.
+`package-lock.json` pins the exact dependency tree.
+
+### Environment
+
+`npx envinfo --system --binaries --npmPackages` output, with install paths removed:
+
+```
+System:
+  OS: macOS 26.5.2 (25F84)
+  CPU: (6) arm64 Apple A18 Pro
+  Memory: 8.00 GB
+  Model: Mac17,5
+Binaries:
+  Node: 24.16.0
+  npm: 11.13.0
+npmPackages:
+  @rollup/plugin-commonjs: 28.0.6
+  @rollup/plugin-node-resolve: 16.0.1
+  @rollup/plugin-replace: 6.0.2
+  react: 19.1.9
+  react-dom: 19.1.9
+  rollup: 4.64.2
+```
 
 The slow runs were stopped instead of being allowed to finish. They are CPU-bound and their memory keeps growing. In a larger app a full slow run took about 4 minutes, with about 1.4 GB RSS.
 
