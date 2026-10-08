@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "rollup -c"
+    "build": "rollup -c",
+    "flatten": "rollup -c rollup.flatten.config.js"
   },
   "dependencies": {
     "react": "19.1.9",

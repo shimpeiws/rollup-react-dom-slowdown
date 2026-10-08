@@ -1,18 +1,27 @@
-# rollup 4.64 tree-shaking slowdown when bundling `react-dom/client`
+# rollup 4.64 tree-shaking slowdown on react-dom
 
-Bundling a three-line React app takes about 1.5 seconds with rollup 4.63.6. With rollup 4.64.0 and 4.64.2 it takes more than a minute. Nearly all of that time is spent in tree-shaking.
+Rollup 4.64 takes minutes to tree-shake react-dom. Rollup 4.63.6 does it in under a second. The reproduction uses no plugins: plain `rollup -c` on one ES module.
 
 ## Reproduce
 
 ```sh
-npm install
-time npm run build                          # rollup 4.64.2: > 60 s
+npm install                                 # installs rollup 4.64.2
+time npm run build                          # > 60 s, CPU-bound
 
 npm install --no-save rollup@4.63.6
-time npm run build                          # rollup 4.63.6: ~1.5 s
+time npm run build                          # ~0.5 s
 ```
 
-`main.js` is the whole app:
+[`rollup.config.js`](rollup.config.js) is the whole build config. It has no plugins:
+
+```js
+export default {
+  input: "bundle-input.js",
+  output: { dir: "dist", format: "es" },
+};
+```
+
+[`bundle-input.js`](bundle-input.js) is React 19.1.9 and react-dom 19.1.9 (production build), flattened into one ES module (573 KB). It is the output of [`rollup.flatten.config.js`](rollup.flatten.config.js) applied to this three-line app ([`main.js`](main.js)):
 
 ```js
 import { createElement } from "react";
@@ -20,19 +29,26 @@ import { createRoot } from "react-dom/client";
 createRoot(document.getElementById("root")).render(createElement("p", null, "hi"));
 ```
 
-[`rollup.config.js`](rollup.config.js) uses three plugins:
+The flatten step runs with rollup 4.63.6 and `treeshake: false`, through `@rollup/plugin-replace` (`NODE_ENV=production`), `@rollup/plugin-node-resolve` (`browser: true`) and `@rollup/plugin-commonjs`. To regenerate the file:
 
-- `@rollup/plugin-replace` sets `process.env.NODE_ENV` to `"production"`.
-- `@rollup/plugin-node-resolve` runs with `browser: true`.
-- `@rollup/plugin-commonjs` uses its default options.
+```sh
+npm install --no-save rollup@4.63.6
+npm run flatten        # produces the same bytes as the checked-in bundle-input.js
+```
+
+The plugins are only needed to produce the input. Building `main.js` through them directly shows the same slowdown (4.63.6: 1.5 s, 4.64.2: > 60 s).
 
 ## Results
 
-| rollup | build time |
+| rollup | `npm run build` |
 |---|---|
-| 4.63.6 | 1.5 s |
-| 4.64.0 | > 30 s (stopped) |
+| 4.63.6 | 0.6 s |
 | 4.64.2 | > 60 s (stopped) |
+| 4.64.2, `treeshake: false` | 1.2 s |
+
+The second and third rows only differ in `treeshake`, so the extra time is spent in tree-shaking. The slow runs were stopped at 60 seconds rather than left to finish: they are CPU-bound and their memory keeps growing. In a larger app, a full slow run took about 4 minutes and used about 1.4 GB RSS.
+
+With the plugin build of `main.js`, 4.64.0 was also slow (stopped after 30 s). The vite + React Router setup described below is fast on 4.63.6 and slow on 4.64.0.
 
 `package-lock.json` pins the exact dependency tree.
 
@@ -58,13 +74,13 @@ npmPackages:
   rollup: 4.64.2
 ```
 
-The slow runs were stopped instead of being allowed to finish. They are CPU-bound and their memory keeps growing. In a larger app a full slow run took about 4 minutes, with about 1.4 GB RSS.
-
 ## In a real app
 
-A Vite 7.1.12 + React Router 7.9.6 SPA hit the same slowdown. `vite build` spent 5m55s in the "transforming" phase for 160 modules on GitHub Actions `ubuntu-latest`. Locally it took 3m48s. Pinning rollup to 4.63.5 brings the build back to about 1 second.
+A Vite 7.1.12 + React Router 7.9.6 SPA hit the same slowdown. On GitHub Actions `ubuntu-latest`, `vite build` spent 5m55s in the "transforming" phase for 160 modules. Locally it took 3m48s. Pinning rollup to 4.63.5 brings the build back to about 1 second.
 
-A stripped-down version of that setup (an empty root route and one index route, no app code) is fast on 4.63.6 and slow on 4.64.0. In the full app, bisecting published versions found 4.63.6 already slow, with 4.63.5 as the last fast release. App code may trigger a second, earlier regression. This repo only reproduces the 4.64.0 one.
+A stripped-down version of that setup has an empty root route, one index route and no app code. It is fast on 4.63.6 and slow on 4.64.0.
+
+In the full app, bisecting published versions found 4.63.6 already slow, with 4.63.5 as the last fast release. App code may trigger a second, earlier regression. This repo only reproduces the 4.64.0 one.
 
 ## Profile
 
@@ -79,4 +95,8 @@ A `node --cpu-prof` run of the full-app build spent about 92% of its 224 s of se
 
 ## Suspected change
 
-4.64.0 contains one feature: [rollup/rollup#6541](https://github.com/rollup/rollup/pull/6541), "Retain callbacks of helper methods called from try statements". The production build of react-dom has many `try` blocks, and the hot functions above handle call arguments. This is a guess; I have not bisected individual commits.
+4.64.0 contains one feature: [rollup/rollup#6541](https://github.com/rollup/rollup/pull/6541), "Retain callbacks of helper methods called from try statements". `bundle-input.js` contains 82 `try {` blocks, and the hot functions above handle call arguments. This is a guess. I have not bisected individual commits.
+
+## License
+
+`bundle-input.js` contains React and react-dom, which are MIT-licensed (Copyright (c) Meta Platforms, Inc. and affiliates). Their license headers are kept in the file.
